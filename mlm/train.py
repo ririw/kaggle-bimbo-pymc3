@@ -5,68 +5,78 @@ import numpy as np
 import pandas
 
 
-def read_dataset_frame(ix):
-    logging.info('Gathering frame data for rand %d', ix)
+def get_dataset_unique_items():
+    logging.info('Collecting unique items')
     con = sqlite3.connect('/tmp/data.sqlite3')
-    try:
-        frame = pandas.read_sql('''
-                SELECT week_num,
-                       sales_channel,
-                       sales_depo,
-                       adjusted_demand
-                  FROM data
-                 WHERE week_num < 8
-                       and adjusted_demand is not NULL
-                       and rand = ?
-            ''', con=con, params=[ix])
-        frame.week_num = frame.week_num.astype('category')
-        frame.sales_channel = frame.sales_channel.astype('category')
-        frame.sales_depo = frame.sales_depo.astype('category')
-        return frame
-    finally:
-        con.close()
+    channel_items = {}
+    for chan in ['sales_channel', 'sales_depo', 'product_id', 'route_id']:
+        res = con.execute('SELECT distinct {} FROM data'.format(chan))
+        chan_unique_vals = np.array(res.fetchall()).flatten()
+        channel_items[chan] = chan_unique_vals
+    con.close()
+    return channel_items
 
 
-cache = None
+def read_dataset_sample(rand, unique_items):
+    logging.info('Gathering full frame')
+    con = sqlite3.connect('/tmp/data.sqlite3')
+    frame = pandas.read_sql('''
+            SELECT sales_channel,
+                   sales_depo,
+                   product_id,
+                   route_id,
+                   adjusted_demand
+              FROM data
+             WHERE week_num < 8
+                   and adjusted_demand is not NULL
+                   and rand = ?
+        ''', con=con, params=[rand])
+    con.close()
+    frame.sales_channel = frame.sales_channel.astype('category', categories=unique_items['sales_channel'])
+    frame.sales_depo = frame.sales_depo.astype('category', categories=unique_items['sales_depo'])
+    frame.product_id = frame.product_id.astype('category', categories=unique_items['product_id'])
+    frame.route_id = frame.route_id.astype('category', categories=unique_items['route_id'])
+    return frame
 
 
-def read_dataset_fully():
-    global cache
-    if cache is None:
-        logging.info('Gathering full frame')
-        con = sqlite3.connect('/tmp/data.sqlite3')
-        frame = pandas.read_sql('''
-                SELECT week_num,
-                       sales_channel,
-                       sales_depo,
-                       adjusted_demand
-                  FROM data
-                 WHERE week_num < 8
-                       and adjusted_demand is not NULL
-            ''', con=con)
-        frame.week_num = frame.week_num.astype('category')
-        frame.sales_channel = frame.sales_channel.astype('category')
-        frame.sales_depo = frame.sales_depo.astype('category')
-        con.close()
-        cache = frame
-    return cache.sample(1000)
+def read_test_dataset(unique_items):
+    logging.info('Gathering test frame')
+    con = sqlite3.connect('/tmp/data.sqlite3')
+    frame = pandas.read_sql('''
+            SELECT sales_channel,
+                   sales_depo,
+                   product_id,
+                   route_id,
+                   adjusted_demand
+              FROM data
+             WHERE week_num >= 8
+                   and adjusted_demand is not NULL
+             LIMIT 1000000
+        ''', con=con)
+    con.close()
+    frame.sales_channel = frame.sales_channel.astype('category', categories=unique_items['sales_channel'])
+    frame.sales_depo = frame.sales_depo.astype('category', categories=unique_items['sales_depo'])
+    frame.product_id = frame.product_id.astype('category', categories=unique_items['product_id'])
+    frame.route_id = frame.route_id.astype('category', categories=unique_items['route_id'])
+
+    return frame
 
 
-def iter_training_batch_frames():
+def iter_training_batch_frames(unique_items):
     while True:
-        ix = np.random.randint(100)
-        frame = read_dataset_fully()
+        frame = read_dataset_sample(np.random.randint(100), unique_items)
         yield frame
 
 
 def frame_vector_split(frame):
     return [
-        frame.week_num.cat.codes.values.astype(np.int8),
         frame.sales_channel.cat.codes.values.astype(np.int8),
         frame.sales_depo.cat.codes.values.astype(np.int16),
-        frame.adjusted_demand.values.astype(np.float16)
+        frame.product_id.cat.codes.values.astype(np.int16),
+        frame.route_id.cat.codes.values.astype(np.int16),
+        frame.adjusted_demand.values.astype(np.float32),
     ]
 
 
-def make_training_minibatch_iterator():
-    return map(frame_vector_split, iter_training_batch_frames())
+def make_training_minibatch_iterator(unique_items):
+    return map(frame_vector_split, iter_training_batch_frames(unique_items))

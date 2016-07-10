@@ -31,10 +31,12 @@ import logging
 import os
 
 import joblib
+import ml_metrics
 import pymc3
 import sqlite3
 
 from mlm import train, model
+from mlm.train import read_test_dataset, frame_vector_split
 
 os.makedirs('/tmp/group-cacho', exist_ok=True)
 memory = joblib.Memory('/tmp/gropo-cacho')
@@ -51,25 +53,35 @@ def calc_dataset_size():
 
 def main():
     logging.info('Getting sample data')
-    data = train.read_dataset_frame(0)
+    unique_items = train.get_dataset_unique_items()
+    data = train.read_dataset_sample(1, unique_items)
     logging.info('Calculating total dataset size')
     total_size = calc_dataset_size()
     logging.info('Building model')
-    mdl, input_tensors, output_rvs = model.build_model(data)
+    mdl, input_tensors, output_rvs = model.build_model(data, unique_items)
 
-    minibatches = train.make_training_minibatch_iterator()
+    minibatches = train.make_training_minibatch_iterator(unique_items)
 
     with mdl:
         logging.info('Doing ADVI batches...')
         v_params = pymc3.variational.advi_minibatch(
-            n=1000,
+            n=10,
             minibatch_tensors=input_tensors,
             minibatch_RVs=output_rvs,
             minibatches=minibatches,
             total_size=total_size,
-            learning_rate=1e-2,
-            epsilon=1.0,
+            n_mcsamples=10,
             verbose=True
         )
-        trace = pymc3.variational.sample_vp(v_params, draws=5000)
+        trace = pymc3.variational.sample_vp(v_params, draws=500)
         print(pymc3.summary(trace))
+
+    test_frame = read_test_dataset(unique_items)
+    with mdl:
+        for i in range(0, test_frame.shape[0], 10000):
+            samp = test_frame.ix[i:i+10000]
+            frame_parts = frame_vector_split(samp)
+            for t, v in zip(input_tensors, frame_parts):
+                t.set_value(v)
+            samples = pymc3.sample_ppc(trace, samples=500)
+            print(ml_metrics.rmsle(samp.adjusted_demand, samples['adjusted_demand'].mean(axis=0)))
