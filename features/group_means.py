@@ -61,6 +61,7 @@ class GeneralMeans(luigi.Task):
             'product_id',
         ]
         fns = ['mean', 'std']
+        yield GroupFunction(rand_round=self.rand_round, group_name='client_id', function_name='mean')
         for fn in fns:
             for name in names:
                 yield GroupFunction(rand_round=self.rand_round, group_name=name, function_name=fn)

@@ -1,6 +1,8 @@
-from features import group_means
+from features import group_means, latent_features
 import numpy as np
 import pandas
+
+
 
 def features():
     return [
@@ -16,6 +18,7 @@ def features():
         group_means.GroupFnQuery('sales_channel', 0, 'std'),
         group_means.GroupFnQuery('route_id',      0, 'std'),
         group_means.GroupFnQuery('product_id',    0, 'std'),
+        latent_features.LatentProductTypeQuery(0)
     ]
 
 
