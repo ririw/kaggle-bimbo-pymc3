@@ -82,12 +82,14 @@ class GroupFnQuery:
         assert task.complete(), 'Must run the task first'
         self.data_map = pandas.read_msgpack(task.output().path)
 
-    def compute(self, data):
+    def compute(self, data, prefix=None, inplace=False):
         col = data[self.group_name].astype(int)
         res = self.data_map[col].reset_index(drop=True)
-        return res
-
-    def col_name(self, prefix=None):
         if prefix is None:
             prefix = ''
-        return prefix + '_' + self.function_name + '_' + self.group_name
+        col_name = prefix + self.function_name + '_' + self.group_name
+        if not inplace:
+            return data.assign(**{col_name: res})
+        else:
+            data[col_name] = res
+            return data

@@ -25,7 +25,7 @@ def make_train_batch(ix=None):
     file_path = '/tmp/split_data/{}/train/{}.csv'.format(0, ix)
     data = pandas.read_csv(file_path)
     for feature in features():
-        data[feature.col_name()] = feature.compute(data)
+        feature.compute(data, inplace=True)
 
     return data.drop(['id'], 1).fillna(-1)
 
@@ -36,6 +36,6 @@ def make_test_batch(ix=None):
     file_path = '/tmp/split_data/{}/test/{}.csv'.format(0, ix)
     data = pandas.read_csv(file_path)
     for feature in features():
-        data[feature.col_name()] = feature.compute(data)
+        feature.compute(data, inplace=True)
 
     return data.drop(['id'], 1).fillna(-1)
