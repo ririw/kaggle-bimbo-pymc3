@@ -5,22 +5,24 @@ import pandas
 
 
 def features():
-    return [
-        group_means.GroupFnQuery('sales_depo',    0, 'mean'),
-        group_means.GroupFnQuery('sales_channel', 0, 'mean'),
-        group_means.GroupFnQuery('route_id',      0, 'mean'),
-        group_means.GroupFnQuery('product_id',    0, 'mean'),
-        #group_means.GroupFnQuery('sales_depo',    0, 'median'),
-        #group_means.GroupFnQuery('sales_channel', 0, 'median'),
-        #group_means.GroupFnQuery('route_id',      0, 'median'),
-        #group_means.GroupFnQuery('product_id',    0, 'median'),
-        group_means.GroupFnQuery('sales_depo',    0, 'std'),
-        group_means.GroupFnQuery('sales_channel', 0, 'std'),
-        group_means.GroupFnQuery('route_id',      0, 'std'),
-        group_means.GroupFnQuery('product_id',    0, 'std'),
-        latent_features.LatentProductTypeQuery(0)
-    ]
+    res = []
+    names = ['sales_depo',
+             'sales_channel',
+             'route_id',
+             'product_id']
+    fns = ['mean', 'std']
+    for name in names:
+        for fn in fns:
+            res.append(group_means.GroupFnQuery(name, 0, fn))
+            for othername in names:
+                if name != othername:
+                    res.append(group_means.GroupFnQuery(','.join([name, othername]), 0, fn))
 
+    res.append(latent_features.LatentProductTypeQuery(0))
+    res.append(group_means.GroupFnQuery('client_id', 0, 'mean'))
+
+    print(res)
+    return res
 
 def make_train_batch(ix=None):
     if ix is None:
