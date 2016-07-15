@@ -2,26 +2,12 @@ from features import group_means, latent_features
 import numpy as np
 import pandas
 
-
-
 def features():
     res = []
-    names = ['sales_depo',
-             'sales_channel',
-             'route_id',
-             'product_id']
-    fns = ['mean', 'std']
-    for name in names:
-        for fn in fns:
-            res.append(group_means.GroupFnQuery(name, 0, fn))
-            for othername in names:
-                if name != othername:
-                    res.append(group_means.GroupFnQuery(','.join([name, othername]), 0, fn))
+    for task in group_means.GeneralMeans.all_tasks():
+        res.append(group_means.GroupFnQuery(','.join(sorted(task)), 0, 'mean'))
+    # res.append(latent_features.LatentProductTypeQuery(0))
 
-    res.append(latent_features.LatentProductTypeQuery(0))
-    res.append(group_means.GroupFnQuery('client_id', 0, 'mean'))
-
-    print(res)
     return res
 
 def make_train_batch(ix=None):

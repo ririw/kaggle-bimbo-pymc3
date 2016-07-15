@@ -30,7 +30,7 @@ def build_model(data, unique_vals):
         product_id_vs = product_id[product_id_var]
         route_id_vs = route_id[route_id_var]
 
-        demand_mu = T.exp(sales_channel_vs + sales_depo_vs + product_id_vs + route_id_vs)
+        demand_mu = T.exp(sales_channel_vs * sales_depo_vs * product_id_vs * route_id_vs)
 
         adjusted_demand = pymc3.Poisson(name='adjusted_demand', mu=demand_mu, observed=adj_demand_var)
 
