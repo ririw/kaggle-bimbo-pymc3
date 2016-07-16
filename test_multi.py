@@ -13,6 +13,7 @@ import dask.async
 import dask.bag
 import dask.dataframe as dd
 import dask.multiprocessing
+from multiprocessing.pool import ThreadPool
 import ml_metrics
 import numpy as np
 import pandas
@@ -45,11 +46,10 @@ def retrieve_tree(fn):
     with gzip.open(fn, 'rb') as f:
         return pickle.load(f)
 
-
 def parallel_predict(fn):
     tree = retrieve_tree(fn)
     ys = []
-    for i in range(10):
+    for i in range(8):
         data = features.make_test_batch(i)
         X = data.drop(['week_num', 'adjusted_demand', 'rand'], 1)
         ys.append(tree.predict(X))
@@ -59,7 +59,7 @@ def parallel_predict(fn):
 os.makedirs('/tmp/intermediate_trees/', exist_ok=True)
 shutil.rmtree('/tmp/intermediate_trees')
 os.makedirs('/tmp/intermediate_trees/')
-with dask.set_options(get=dask.multiprocessing.get):
+with dask.set_options(get=dask.multiprocessing.get, pool=ThreadPool(4)):
     if True:
         datasets = [dask.delayed(features.make_train_batch)(ix) for ix in range(8)]
         dataset = dd.from_delayed(datasets)

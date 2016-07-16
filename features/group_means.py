@@ -14,82 +14,44 @@ from dask.dataframe.groupby import DataFrameGroupBy
 from features.base_data import BuildData
 
 
-def count_contents(key_cols):
-    def count(frame: pandas.DataFrame):
-        res = frame.groupby(key_cols).adjusted_demand.agg({
-        'n': lambda f: f.shape[0],
-        'total': lambda v: np.log1p(v).sum()})
-        return res.reset_index()
-
-    return count
-
-
-class GroupFunction(luigi.Task):
-    rand_round = luigi.IntParameter()
-    group_names = luigi.Parameter()
-    function_name = luigi.Parameter()
-
-    def requires(self):
-        nose.tools.assert_in(self.function_name, {'mean'})
-        return BuildData(rand_round=self.rand_round)
-
-    def output(self):
-        nose.tools.assert_in(self.function_name, {'mean'})
-        grp_name = '-'.join(sorted(self.group_names.split(',')))
-        return luigi.file.LocalTarget(
-            path='/tmp/group_stats/{}/group_{}_{}.msgpack'.format(self.rand_round,
-                                                                  self.function_name,
-                                                                  grp_name))
-
-    def run(self):
-        with dask.set_options(get=dask.multiprocessing.get):
-            names = self.group_names.split(',')
-            data = dask.dataframe.read_csv('/tmp/split_data/{}/train/*.csv'.format(self.rand_round))
-            if len(names) > 1:
-                partition_groups = data.map_partitions(count_contents(names)).compute()
-                partition_totals = partition_groups.groupby(names).sum()
-                partition_totals['target'] = partition_totals.total / partition_totals.n
-                res = partition_totals['target']
-            else:
-                res = data.groupby(names[0]).adjusted_demand.mean().compute()
-                res.name = 'target'
-        self.output().makedirs()
-        logging.critical('Writing file: {}, do not interrupt'.format(self.output().path))
-        with open(self.output().path, 'wb') as f:
-            res.reset_index().to_msgpack(f)
-        logging.critical('Finished writing file: {}, you can now interrupt'.format(self.output().path))
-
 class SqlGroupFunction(luigi.Task):
-    rand_round = luigi.IntParameter()
     group_names = luigi.Parameter()
-    function_name = luigi.Parameter()
 
     def output(self):
         grp_name = '-'.join(sorted(self.group_names.split(',')))
         return luigi.file.LocalTarget(
-            path='/tmp/group_stats/{}/group_{}_{}.msgpack'.format(self.rand_round, self.function_name, grp_name))
+            path='/tmp/group_stats/group_{}.msgpack'.format(grp_name))
 
     def run(self):
         con = sqlite3.connect("/tmp/data.sqlite3")
+        con.create_aggregate("log1pMean", 1, Log1PMean)
+        con.create_function("expm1", 1, np.expm1)
         query = """
             SELECT {},
-                   avg(adjusted_demand) as adjusted_demand
+                   log1pMean(adjusted_demand) as adjusted_demand
               FROM data
              WHERE adjusted_demand is not NULL
                    and week_num < 8
           GROUP BY {}
         """.format(self.group_names, self.group_names)
         res = pandas.read_sql(query, con=con)
-        res.adjusted_demand = np.log1p(res.adjusted_demand)
+        self.output().makedirs()
         with open(self.output().path, 'wb') as f:
             res.to_msgpack(f, compress='zlib')
 
 
+class Log1PMean:
+    def __init__(self):
+        self.vec = []
+
+    def step(self, value):
+        self.vec.append(value)
+
+    def finalize(self):
+        return np.mean(np.log1p(self.vec))
 
 
 class GeneralMeans(luigi.Task):
-    rand_round = luigi.IntParameter()
-
     @staticmethod
     def all_tasks():
         names = [
@@ -105,8 +67,7 @@ class GeneralMeans(luigi.Task):
     def requires(self):
         for t in GeneralMeans.all_tasks():
             tlist = sorted(list(t))
-            yield SqlGroupFunction(rand_round=self.rand_round, group_names=','.join(tlist), function_name='mean')
-
+            yield SqlGroupFunction(group_names=','.join(tlist))
 
     @staticmethod
     def names_maker(names):
@@ -129,9 +90,9 @@ class GroupFnQuery:
     def __init__(self, group_names, rand_round, function_name):
         self.group_names = group_names.split(',')
         self.function_name = function_name
-        task = GroupFunction(group_names=group_names,
-                             rand_round=rand_round,
-                             function_name=function_name)
+        task = SqlGroupFunction(group_names=group_names,
+                                rand_round=rand_round,
+                                function_name=function_name)
         assert task.complete(), 'Must run the task first: {} -- {}'.format(group_names, function_name)
         self.col_name = self.function_name + '_' + '-'.join(self.group_names)
 
@@ -139,20 +100,23 @@ class GroupFnQuery:
         self.data_map.name = self.col_name
 
     def compute(self, data, prefix=None, inplace=False):
+        print(self.data_map.dtypes)
+        print(self.group_names)
         res = pandas.merge(data, self.data_map,
                            left_on=self.group_names,
                            right_on=self.group_names, how='left')
-        assert res.target.notnull().all(), res.target.notnull().all()
+        if res.target.isnull().any():
+            print("Found nulls in res for groups {}, null prop was {}".format(
+                self.group_names, str(res.target.isnull().mean())))
+            res.target = res.target.fillna(-1)
 
         if prefix is None:
             prefix = ''
         col_name = prefix + self.col_name
         if not inplace:
-            return data.assign(**{#col_name + '_log': np.log(res['target'] + 1),
-                                  col_name: np.expm1(res['target'])})
+            return data.assign({col_name: res['target']})
         else:
-            #data[col_name + '_log'] = np.log(res['target'] + 1)
-            data[col_name] = np.expm1(res['target'])
+            data[col_name] = res['target']
             return data
 
     def __repr__(self):
