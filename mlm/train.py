@@ -1,37 +1,33 @@
 import logging
 import sqlite3
+import pickle
 
 import numpy as np
 import pandas
 
 
 def get_dataset_unique_items():
-    logging.info('Collecting unique items')
-    con = sqlite3.connect('/tmp/data.sqlite3')
-    channel_items = {}
-    for chan in ['sales_channel', 'sales_depo', 'product_id', 'route_id']:
-        res = con.execute('SELECT distinct {} FROM data'.format(chan))
-        chan_unique_vals = np.array(res.fetchall()).flatten()
-        channel_items[chan] = chan_unique_vals
-    con.close()
-    return channel_items
+    try:
+        with open("/tmp/unique_items.pkl", 'rb') as f:
+            return pickle.load(f)
+    except FileNotFoundError:
+        logging.info('Collecting unique items')
+        con = sqlite3.connect('/tmp/data.sqlite3')
+        channel_items = {}
+        for chan in ['sales_channel', 'sales_depo', 'product_id', 'route_id']:
+            logging.info('Collecting for %s', chan)
+            res = con.execute('SELECT distinct {} FROM data'.format(chan))
+            chan_unique_vals = np.array(res.fetchall()).flatten()
+            channel_items[chan] = chan_unique_vals
+        con.close()
+        with open("/tmp/unique_items.pkl", 'wb') as f:
+            pickle.dump(channel_items, f)
+        return channel_items
 
 
 def read_dataset_sample(rand, unique_items):
     logging.info('Gathering full frame')
-    con = sqlite3.connect('/tmp/data.sqlite3')
-    frame = pandas.read_sql('''
-            SELECT sales_channel,
-                   sales_depo,
-                   product_id,
-                   route_id,
-                   adjusted_demand
-              FROM data
-             WHERE week_num < 8
-                   and adjusted_demand is not NULL
-                   and rand = ?
-        ''', con=con, params=[rand])
-    con.close()
+    frame = pandas.read_csv('/tmp/split_data/0/train/{}.csv'.format(rand))
     frame.sales_channel = frame.sales_channel.astype('category', categories=unique_items['sales_channel'])
     frame.sales_depo = frame.sales_depo.astype('category', categories=unique_items['sales_depo'])
     frame.product_id = frame.product_id.astype('category', categories=unique_items['product_id'])
@@ -41,19 +37,7 @@ def read_dataset_sample(rand, unique_items):
 
 def read_test_dataset(unique_items):
     logging.info('Gathering test frame')
-    con = sqlite3.connect('/tmp/data.sqlite3')
-    frame = pandas.read_sql('''
-            SELECT sales_channel,
-                   sales_depo,
-                   product_id,
-                   route_id,
-                   adjusted_demand
-              FROM data
-             WHERE week_num >= 8
-                   and adjusted_demand is not NULL
-             LIMIT 1000000
-        ''', con=con)
-    con.close()
+    frame = pandas.read_csv('/tmp/split_data/0/test/{}.csv'.format(0))
     frame.sales_channel = frame.sales_channel.astype('category', categories=unique_items['sales_channel'])
     frame.sales_depo = frame.sales_depo.astype('category', categories=unique_items['sales_depo'])
     frame.product_id = frame.product_id.astype('category', categories=unique_items['product_id'])

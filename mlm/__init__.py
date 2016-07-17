@@ -37,8 +37,8 @@ import sqlite3
 
 from mlm import train, model
 from mlm.train import read_test_dataset, frame_vector_split
+import matplotlib.pyplot as plt
 
-os.makedirs('/tmp/group-cacho', exist_ok=True)
 memory = joblib.Memory('/tmp/gropo-cacho')
 
 
@@ -65,7 +65,7 @@ def main():
     with mdl:
         logging.info('Doing ADVI batches...')
         v_params = pymc3.variational.advi_minibatch(
-            n=10,
+            n=100,
             minibatch_tensors=input_tensors,
             minibatch_RVs=output_rvs,
             minibatches=minibatches,
@@ -74,7 +74,10 @@ def main():
             verbose=True
         )
         trace = pymc3.variational.sample_vp(v_params, draws=500)
-        print(pymc3.summary(trace))
+        #print(pymc3.summary(trace))
+        plt.plot(v_params.elbo_vals)
+        plt.savefig('./elbo.png')
+        plt.show()
 
     test_frame = read_test_dataset(unique_items)
     with mdl:

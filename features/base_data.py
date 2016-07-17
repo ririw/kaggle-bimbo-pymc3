@@ -9,20 +9,10 @@ class SplitData(luigi.Task):
     rand_round = luigi.IntParameter()
 
     def output(self):
-        kind = self.kind_info()
         ix = self.offset
-        return [luigi.file.LocalTarget(path='/tmp/split_data/{}/{}/{}.csv'.format(self.rand_round, kind, ix)),
+        return [luigi.file.LocalTarget(path='/tmp/split_data/{}/train/{}.csv'.format(self.rand_round, ix)),
                 luigi.file.LocalTarget(path='/tmp/split_data/{}/test/{}.csv'.format(self.rand_round, ix)),
                 luigi.file.LocalTarget(path='/tmp/split_data/{}/score/{}.csv'.format(self.rand_round, ix))]
-
-    def kind_info(self):
-        return 'train'
-        # ix = (self.offset + self.rand_round) % 100
-        # if ix < 50:
-        #     kind = 'train'
-        # else:
-        #     kind = 'feature'
-        # return kind
 
     def run(self):
         con = sqlite3.connect("/tmp/data.sqlite3")

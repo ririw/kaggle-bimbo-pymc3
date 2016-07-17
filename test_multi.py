@@ -6,14 +6,12 @@ import pickle
 import shutil
 import tempfile
 import warnings
+from multiprocessing.pool import Pool
 
 import coloredlogs
-import dask
-import dask.async
-import dask.bag
 import dask.dataframe as dd
 import dask.multiprocessing
-from multiprocessing.pool import ThreadPool
+import dask.bag
 import ml_metrics
 import numpy as np
 import pandas
@@ -28,12 +26,12 @@ coloredlogs.install(level=logging.INFO)
 
 
 def build_tree(data):
-    reg = ensemble.ExtraTreesRegressor(verbose=0, max_depth=4,
-                                       n_jobs=1, n_estimators=10)
+    reg = ensemble.ExtraTreesRegressor(verbose=0, max_depth=7,
+                                       n_jobs=-1, n_estimators=4)
     X = data.drop(['week_num', 'adjusted_demand', 'rand'], 1)
     y = data.adjusted_demand
     reg.fit(X, y)
-    if np.random.uniform() < 0.05:
+    if np.random.uniform() < 0.25:
         print(pandas.Series(reg.feature_importances_, index=X.columns).sort_values())
     fn = tempfile.NamedTemporaryFile(delete=False, dir='/tmp/intermediate_trees/', suffix='.pkl.gzip')
     with gzip.open(fn.name, 'wb') as f:
@@ -45,6 +43,7 @@ def build_tree(data):
 def retrieve_tree(fn):
     with gzip.open(fn, 'rb') as f:
         return pickle.load(f)
+
 
 def parallel_predict(fn):
     tree = retrieve_tree(fn)
@@ -59,7 +58,7 @@ def parallel_predict(fn):
 os.makedirs('/tmp/intermediate_trees/', exist_ok=True)
 shutil.rmtree('/tmp/intermediate_trees')
 os.makedirs('/tmp/intermediate_trees/')
-with dask.set_options(get=dask.multiprocessing.get, pool=ThreadPool(4)):
+with dask.set_options(get=dask.multiprocessing.get, pool=Pool(2)):
     if True:
         datasets = [dask.delayed(features.make_train_batch)(ix) for ix in range(8)]
         dataset = dd.from_delayed(datasets)

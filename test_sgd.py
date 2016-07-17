@@ -20,9 +20,10 @@ dropped_cols = ['adjusted_demand', 'client_id',
                 'sales_channel', 'rand', 'week_num']
 
 cls = linear_model.SGDRegressor('huber', 'elasticnet')
-for i in tqdm(range(100)):
+N = 10
+for i in tqdm(range(N)):
     logging.info('Starting batch {}'.format(i))
-    data = features.make_train_batch(i % 100)
+    data = features.make_train_batch(i)
     logging.info('Got data')
     X = data.drop(dropped_cols, 1)
     y = data.adjusted_demand
@@ -32,8 +33,8 @@ for i in tqdm(range(100)):
 
 ys = []
 y_preds = []
-for i in tqdm(range(100)):
-    data = features.make_test_batch(i % 100)
+for i in tqdm(range(N)):
+    data = features.make_test_batch(i)
     X = data.drop(dropped_cols, 1)
     ys.append(data.adjusted_demand)
     y_pred = np.maximum(cls.predict(X), 1)
